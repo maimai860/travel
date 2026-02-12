@@ -89,7 +89,7 @@ def get_exchange_rate(base="JPY", target="USD"):
             "from": base,
             "to": target
         }
-        res = requests.get(url, params=params, timeout=5)
+        res = requests.get(url, params=params, timeout=10)
         res.raise_for_status()
         data = res.json()
         return data["rates"][target]
