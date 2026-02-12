@@ -2,6 +2,7 @@ import streamlit as st
 from datetime import date
 import urllib.parse
 import requests
+import json
 
 # ===== LangChain =====
 from langchain_core.prompts import PromptTemplate
@@ -163,26 +164,31 @@ if st.button("🔍 検索"):
     st.subheader("🧳 AI 旅行プラン")
 
     template = """
-あなたは優秀な旅行プランナーです。
+    あなたは優秀な旅行プランナーです。
 
-【条件】
-移動ルート: {route}
-日程: {start_date} 〜 {end_date}
-年齢: {age}
-予算: {budget_jpy}円（約 {budget_foreign} {currency}）
-予算方針: {budget_type}
-移動手段: {transport}
-天気: {weather}
+    【条件】
+    移動ルート: {route}
+    日程: {start_date} 〜 {end_date}
+    年齢: {age}
+    予算: {budget_jpy}円（約 {budget_foreign} {currency}）
+    予算方針: {budget_type}
+    移動手段: {transport}
+    天気: {weather}
 
-【ルール】
-- 晴れなら屋外中心、雨なら屋内中心
-- 実在する地名を使う
-- 1日ごとに分けて書く
-- 日本語で自然に書く
+    【ルール】
+    - 晴れなら屋外中心、雨なら屋内中心
+    - 実在する地名を使う
+    - 1日ごとに分けて書く
 
-【出力】
-旅行プラン文章
-"""
+    【出力形式】
+    以下のJSON形式で出力してください。
+
+    {
+    "plan": "旅行プラン文章",
+    "places": ["訪問地1", "訪問地2", "訪問地3"]
+    }
+    """
+
 
     prompt = PromptTemplate(
         input_variables=[
@@ -202,7 +208,7 @@ if st.button("🔍 検索"):
 
     chain = prompt | llm | StrOutputParser()
 
-    plan = chain.invoke({
+    response = chain.invoke({
         "route": route_text,
         "start_date": start_date,
         "end_date": end_date,
@@ -215,6 +221,14 @@ if st.button("🔍 検索"):
         "weather": weather
     })
 
+    data = json.loads(response)
+
+    plan = data["plan"]
+    places = data["places"]
+
+    st.markdown(plan)
+
+
 
     st.markdown(plan)
 
@@ -223,7 +237,8 @@ if st.button("🔍 検索"):
     # =========================
     st.subheader("📍 Google Maps ルート")
 
-    map_url = f"https://www.google.com/maps/dir/{urllib.parse.quote(route_text)}"
+    map_route = "/".join([urllib.parse.quote(p) for p in places])
+    map_url = f"https://www.google.com/maps/dir/{map_route}"
 
     st.markdown(f"### 🗺️ ルートを地図で表示")
     st.link_button(
