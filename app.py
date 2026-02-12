@@ -182,12 +182,15 @@ if st.button("🔍 検索"):
 
     【出力形式】
     以下のJSON形式で出力してください。
+    余計な文章は一切出力しないでください。
+    JSONのみを出力してください。
 
-    {
+    {{
     "plan": "旅行プラン文章",
     "places": ["訪問地1", "訪問地2", "訪問地3"]
-    }
+    }}
     """
+
 
 
     prompt = PromptTemplate(
@@ -225,10 +228,6 @@ if st.button("🔍 検索"):
 
     plan = data["plan"]
     places = data["places"]
-
-    st.markdown(plan)
-
-
 
     st.markdown(plan)
 
