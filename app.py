@@ -12,86 +12,65 @@ from langchain_core.output_parsers import StrOutputParser
 
 st.title("🌤️ 天気 × AI 旅行プラン検索アプリ")
 
-st.header("🧭 移動ルート（区間ごと）")
+# =========================
+# ルート入力
+# =========================
+st.header("🧭 移動ルート")
 
 if "legs" not in st.session_state:
     st.session_state.legs = [{"from": "東京", "to": "大阪"}]
 
 for i, leg in enumerate(st.session_state.legs):
-    col1, col2, col3 = st.columns([4, 4, 1])
+    col1, col2 = st.columns(2)
+    leg["from"] = col1.text_input(f"出発地{i+1}", value=leg["from"], key=f"from_{i}")
+    leg["to"] = col2.text_input(f"到着地{i+1}", value=leg["to"], key=f"to_{i}")
 
-    with col1:
-        leg["from"] = st.text_input(f"出発地 {i+1}", value=leg["from"], key=f"from_{i}")
-
-    with col2:
-        leg["to"] = st.text_input(f"到着地 {i+1}", value=leg["to"], key=f"to_{i}")
-
-    with col3:
-        if st.button("❌", key=f"del_{i}") and len(st.session_state.legs) > 1:
-            st.session_state.legs.pop(i)
-            st.rerun()
-
-if st.button("➕ 区間を追加"):
-    st.session_state.legs.append({"from": "", "to": ""})
-    st.rerun()
-
-
+# =========================
+# 日程
+# =========================
 st.header("📅 日程")
 
-col1, col2 = st.columns(2)
-with col1:
-    start_date = st.date_input("開始日", value=date.today())
-with col2:
-    end_date = st.date_input("終了日")
+start_date = st.date_input("開始日", value=date.today())
+end_date = st.date_input("終了日")
 
-
-st.header("👤 個人条件")
+# =========================
+# 条件
+# =========================
+st.header("👤 条件")
 
 age = st.slider("年齢", 0, 100, 30)
-budget_jpy = st.number_input("予算（円）", min_value=0, step=1000)
+budget_jpy = st.number_input("総予算（円）", min_value=0, step=1000)
 
 budget_type = st.radio(
-    "予算の考え方",
+    "予算タイプ",
     ["ポジティブ（余裕あり）", "ネガティブ（節約重視）", "全体"]
 )
 
-
-st.header("💱 為替")
-
-currency = st.selectbox("表示通貨", ["USD", "EUR", "KRW", "CNY", "GBP"])
-
-
-def get_exchange_rate(base="JPY", target="USD"):
-    try:
-        url = "https://api.frankfurter.app/latest"
-        params = {"from": base, "to": target}
-        res = requests.get(url, params=params, timeout=10)
-        res.raise_for_status()
-        data = res.json()
-        return data["rates"][target]
-    except:
-        return None
-
-
-rate = get_exchange_rate("JPY", currency)
-
-if rate:
-    budget_foreign = round(budget_jpy * rate, 2)
-    st.info(f"1 JPY = {rate:.4f} {currency} ｜ 約 {budget_foreign} {currency}")
-else:
-    st.info(f"為替取得失敗 → 円ベース表示（{budget_jpy} 円）")
-
-
-st.header("🚆 移動手段")
+weather = st.radio("天気", ["晴れ", "雨"])
 
 transport = st.multiselect(
-    "利用する移動手段",
+    "利用交通手段",
     ["飛行機", "新幹線", "バス", "車"]
 )
 
-st.header("☀️ 天気条件")
+# =========================
+# 所要時間辞書
+# =========================
+travel_time_table = {
+    ("東京", "大阪", "新幹線"): "約2時間30分",
+    ("東京", "大阪", "飛行機"): "約1時間（＋空港移動約1時間）",
+    ("東京", "大阪", "車"): "約6時間",
+    ("東京", "大阪", "バス"): "約8時間",
+}
 
-weather = st.radio("想定する天気", ["晴れ", "雨"])
+def get_travel_time(start, end, methods):
+    for m in methods:
+        key = (start, end, m)
+        if key in travel_time_table:
+            return f"{m} {travel_time_table[key]}"
+    if methods:
+        return f"{methods[0]} 約3〜5時間"
+    return "移動 約3時間"
 
 
 # =========================
@@ -117,17 +96,10 @@ if st.button("🔍 検索"):
     total_days = (end_date - start_date).days + 1
 
     if total_days <= 0:
-        st.error("終了日は開始日より後にしてください")
+        st.error("日程が不正です")
         st.stop()
 
-    if total_days <= 3:
-        min_chars = 300
-    elif total_days <= 6:
-        min_chars = 250
-    else:
-        min_chars = 150
-
-    st.subheader("🧳 AI 旅行プラン")
+    daily_budget = int(budget_jpy / total_days) if total_days > 0 else budget_jpy
 
     llm = ChatOpenAI(
         model="gpt-4o-mini",
@@ -136,89 +108,103 @@ if st.button("🔍 検索"):
         openai_api_key=st.secrets["OPENAI_API_KEY"]
     )
 
-    places_set = set()
+    used_spots = set()
+    all_spots = []
+
+    st.subheader("🧳 旅行プラン")
 
     for i in range(total_days):
 
         current_date = start_date + timedelta(days=i)
 
-        if i == 0:
-            stay_rule = f"この日だけ{start_city}から{end_city}へ移動する"
-        else:
-            stay_rule = f"すでに{end_city}に滞在している前提で書く。都市間移動は絶対に書かない"
+        previous_spots = ", ".join(used_spots) if used_spots else "なし"
 
         template = """
-あなたはプロの旅行プランナーです。
+あなたは旅行プランナーです。
 
-【重要ルール】
-- {stay_rule}
-- 実在する観光地を使う
-- 最低{min_chars}文字以上
-- 最後に必ず以下形式で観光地だけ出力する
+【例】
+朝：大阪城 - 天守閣から絶景
+昼：黒門市場 - 食べ歩き
+夜：通天閣 - 夜景散策
 
 MAP_SPOTS:
-["観光地1","観光地2","観光地3"]
+["大阪城","黒門市場","通天閣"]
+
+【重要ルール】
+- 実在する観光地のみ使用
+- 総予算: {budget_jpy}円
+- 1日あたり予算: {daily_budget}円
+- 予算タイプ: {budget_type}
+- 天気: {weather}
+- これまで訪れた観光地: {previous_spots}
+- 上記は再提案しない
+- 朝・昼・夜のみ出力
+- 各行は「時間帯：場所 - 一言コメント」
+- 最後にMAP_SPOTSをJSONで出力
 
 Day{day_number}
 日付: {current_date}
-年齢: {age}
-予算方針: {budget_type}
-移動手段: {transport}
-天気: {weather}
 """
 
         prompt = PromptTemplate(
             input_variables=[
-                "stay_rule", "min_chars",
-                "day_number", "current_date",
-                "age", "budget_type",
-                "transport", "weather"
+                "budget_jpy",
+                "daily_budget",
+                "budget_type",
+                "weather",
+                "previous_spots",
+                "day_number",
+                "current_date"
             ],
             template=template
         )
 
         chain = prompt | llm | StrOutputParser()
 
-        st.markdown(f"### 🗓 Day {i+1} ({current_date})")
+        st.markdown(f"### Day{i+1} ({current_date})")
 
         day_text = ""
         placeholder = st.empty()
 
         for chunk in chain.stream({
-            "stay_rule": stay_rule,
-            "min_chars": min_chars,
-            "day_number": i+1,
-            "current_date": current_date,
-            "age": age,
+            "budget_jpy": budget_jpy,
+            "daily_budget": daily_budget,
             "budget_type": budget_type,
-            "transport": ", ".join(transport),
-            "weather": weather
+            "weather": weather,
+            "previous_spots": previous_spots,
+            "day_number": i+1,
+            "current_date": current_date
         }):
             day_text += chunk
             placeholder.markdown(day_text)
 
-        # ===== MAP_SPOTS抽出 =====
+        # Day1は移動を上に表示（Python制御）
+        if i == 0:
+            travel_info = get_travel_time(start_city, end_city, transport)
+            st.markdown(
+                f"**移動：{start_city} → {end_city}（{travel_info}）**"
+            )
+
         match = re.search(r"MAP_SPOTS:\s*(\[[^\]]+\])", day_text)
 
         if match:
             try:
                 spots = json.loads(match.group(1))
                 for s in spots:
-                    if s != start_city:
-                        places_set.add(s)
+                    if s not in used_spots:
+                        used_spots.add(s)
+                        all_spots.append(s)
             except:
                 pass
 
     # =========================
     # Google Map
     # =========================
-    st.subheader("📍 Google Maps ルート")
+    st.subheader("📍 Google Maps")
 
-    places = list(places_set)[:8]
-
-    if places:
-        map_route = "/".join([urllib.parse.quote(p) for p in places])
-        map_url = f"https://www.google.com/maps/dir/{map_route}"
-        st.link_button("Google Mapでルートを開く", map_url)
+    if all_spots:
+        route_url = "/".join([urllib.parse.quote(p) for p in all_spots])
+        map_url = f"https://www.google.com/maps/dir/{route_url}"
+        st.link_button("Google Mapで開く", map_url)
     else:
-        st.info("観光地が抽出できませんでした。")
+        st.info("観光地が抽出できませんでした")
