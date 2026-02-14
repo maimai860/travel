@@ -170,20 +170,28 @@ if st.button("🔍 検索"):
         openai_api_key=st.secrets["OPENAI_API_KEY"]
     )
 
-    day_template = """
+    full_plan = ""
+    places_set = set()
+
+    for i in range(total_days):
+
+        current_date = start_date + timedelta(days=i)
+
+        # =========================
+        # Day1（移動日）
+        # =========================
+        if i == 0:
+
+            day_template = """
 あなたはプロの旅行プランナーです。
 
 【重要ルール】
-- 必ず最後まで出力する
-- Day1のみ出発地から最終目的地へ移動する
-- Day2以降は最終目的地を拠点に観光する
+- この日だけ出発地から最終目的地へ移動する
+- 移動後の観光も含める
 - 同じ都市間移動を繰り返さない
 - 実在する地名を使う
-- 年齢が20歳未満なら酒類を提案しない
-- 晴れなら屋外中心、雨なら屋内中心
-- 各日程は最低{min_chars}文字以上
+- 最低{min_chars}文字以上
 
-【条件】
 Day{day_number}
 日付: {current_date}
 出発地: {start_city}
@@ -196,25 +204,70 @@ Day{day_number}
 旅行ガイドのように魅力的に書いてください。
 """
 
-    full_plan = ""
-    places_set = set()
+            input_vars = [
+                "day_number", "current_date",
+                "start_city", "end_city",
+                "age", "budget_type",
+                "transport", "weather",
+                "min_chars"
+            ]
 
-    for i in range(total_days):
+            variables = {
+                "day_number": i+1,
+                "current_date": current_date,
+                "start_city": start_city,
+                "end_city": end_city,
+                "age": age,
+                "budget_type": budget_type,
+                "transport": ", ".join(transport),
+                "weather": weather,
+                "min_chars": min_chars
+            }
 
-        current_date = start_date + timedelta(days=i)
+        # =========================
+        # Day2以降（滞在観光）
+        # =========================
+        else:
+
+            day_template = """
+あなたはプロの旅行プランナーです。
+
+【重要ルール】
+- すでに{end_city}に滞在している前提で書く
+- 都市間移動は絶対に書かない
+- 東京から再出発する描写は絶対に含めない
+- 実在する地名を使う
+- 最低{min_chars}文字以上
+
+Day{day_number}
+日付: {current_date}
+滞在地: {end_city}
+年齢: {age}
+予算方針: {budget_type}
+天気: {weather}
+
+旅行ガイドのように魅力的に書いてください。
+"""
+
+            input_vars = [
+                "day_number", "current_date",
+                "end_city", "age",
+                "budget_type", "weather",
+                "min_chars"
+            ]
+
+            variables = {
+                "day_number": i+1,
+                "current_date": current_date,
+                "end_city": end_city,
+                "age": age,
+                "budget_type": budget_type,
+                "weather": weather,
+                "min_chars": min_chars
+            }
 
         prompt = PromptTemplate(
-            input_variables=[
-                "day_number",
-                "current_date",
-                "start_city",
-                "end_city",
-                "age",
-                "budget_type",
-                "transport",
-                "weather",
-                "min_chars"
-            ],
+            input_variables=input_vars,
             template=day_template
         )
 
@@ -225,17 +278,7 @@ Day{day_number}
         day_text = ""
         placeholder = st.empty()
 
-        for chunk in chain.stream({
-            "day_number": i+1,
-            "current_date": current_date,
-            "start_city": start_city,
-            "end_city": end_city,
-            "age": age,
-            "budget_type": budget_type,
-            "transport": ", ".join(transport),
-            "weather": weather,
-            "min_chars": min_chars
-        }):
+        for chunk in chain.stream(variables):
             day_text += chunk
             placeholder.markdown(day_text)
 
