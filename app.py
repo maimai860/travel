@@ -99,7 +99,9 @@ if st.button("🔍 検索"):
         st.error("日程が不正です")
         st.stop()
 
-    daily_budget = int(budget_jpy / total_days) if total_days > 0 else budget_jpy
+    daily_budget = int(budget_jpy / total_days)
+
+    travel_info = get_travel_time(start_city, end_city, transport)
 
     llm = ChatOpenAI(
         model="gpt-4o-mini",
@@ -108,103 +110,72 @@ if st.button("🔍 検索"):
         openai_api_key=st.secrets["OPENAI_API_KEY"]
     )
 
-    used_spots = set()
-    all_spots = []
+    template = """
+あなたはプロ旅行プランナーです。
+
+【絶対ルール】
+- 全{total_days}日分を一度に生成する
+- Day1のみ移動を書く
+- Day2以降は{end_city}滞在前提
+- 観光地は絶対に重複させない
+- 実在する観光地のみ
+- 朝・昼・夜のみ
+- 各行は「時間帯：場所 - 一言コメント」
+
+【Day1最初に必ず書く】
+移動：{start_city} → {end_city}（{travel_info}）
+
+総予算: {budget_jpy}円
+1日予算: {daily_budget}円
+予算タイプ: {budget_type}
+天気: {weather}
+
+最後に必ず以下形式で出力：
+ALL_SPOTS:
+["観光地1","観光地2",...]
+
+開始日: {start_date}
+"""
+
+    prompt = PromptTemplate(
+        input_variables=[
+            "total_days","end_city","start_city","travel_info",
+            "budget_jpy","daily_budget","budget_type",
+            "weather","start_date"
+        ],
+        template=template
+    )
+
+    chain = prompt | llm | StrOutputParser()
 
     st.subheader("🧳 旅行プラン")
 
-    for i in range(total_days):
+    full_text = ""
+    placeholder = st.empty()
 
-        current_date = start_date + timedelta(days=i)
+    for chunk in chain.stream({
+        "total_days": total_days,
+        "end_city": end_city,
+        "start_city": start_city,
+        "travel_info": travel_info,
+        "budget_jpy": budget_jpy,
+        "daily_budget": daily_budget,
+        "budget_type": budget_type,
+        "weather": weather,
+        "start_date": start_date
+    }):
+        full_text += chunk
+        placeholder.markdown(full_text)
 
-        previous_spots = ", ".join(used_spots) if used_spots else "なし"
+    # 観光地抽出
+    match = re.search(r"ALL_SPOTS:\s*(\[[^\]]+\])", full_text)
 
-        template = """
-あなたは旅行プランナーです。
-
-【例】
-朝：大阪城 - 天守閣から絶景
-昼：黒門市場 - 食べ歩き
-夜：通天閣 - 夜景散策
-
-MAP_SPOTS:
-["大阪城","黒門市場","通天閣"]
-
-【重要ルール】
-- 実在する観光地のみ使用
-- 総予算: {budget_jpy}円
-- 1日あたり予算: {daily_budget}円
-- 予算タイプ: {budget_type}
-- 天気: {weather}
-- これまで訪れた観光地: {previous_spots}
-- 上記は再提案しない
-- 朝・昼・夜のみ出力
-- 各行は「時間帯：場所 - 一言コメント」
-- 最後にMAP_SPOTSをJSONで出力
-
-Day{day_number}
-日付: {current_date}
-"""
-
-        prompt = PromptTemplate(
-            input_variables=[
-                "budget_jpy",
-                "daily_budget",
-                "budget_type",
-                "weather",
-                "previous_spots",
-                "day_number",
-                "current_date"
-            ],
-            template=template
-        )
-
-        chain = prompt | llm | StrOutputParser()
-
-        st.markdown(f"### Day{i+1} ({current_date})")
-
-        day_text = ""
-        placeholder = st.empty()
-
-        for chunk in chain.stream({
-            "budget_jpy": budget_jpy,
-            "daily_budget": daily_budget,
-            "budget_type": budget_type,
-            "weather": weather,
-            "previous_spots": previous_spots,
-            "day_number": i+1,
-            "current_date": current_date
-        }):
-            day_text += chunk
-            placeholder.markdown(day_text)
-
-        # Day1は移動を上に表示（Python制御）
-        if i == 0:
-            travel_info = get_travel_time(start_city, end_city, transport)
-            st.markdown(
-                f"**移動：{start_city} → {end_city}（{travel_info}）**"
-            )
-
-        match = re.search(r"MAP_SPOTS:\s*(\[[^\]]+\])", day_text)
-
-        if match:
-            try:
-                spots = json.loads(match.group(1))
-                for s in spots:
-                    if s not in used_spots:
-                        used_spots.add(s)
-                        all_spots.append(s)
-            except:
-                pass
-
-    # =========================
-    # Google Map
-    # =========================
-    st.subheader("📍 Google Maps")
-
-    if all_spots:
-        route_url = "/".join([urllib.parse.quote(p) for p in all_spots])
-        map_url = f"https://www.google.com/maps/dir/{route_url}"
-        st.link_button("Google Mapで開く", map_url)
-    else:
-        st.info("観光地が抽出できませんでした")
+    if match:
+        try:
+            spots = json.loads(match.group(1))
+            route_url = "/".join([urllib.parse.quote(p) for p in spots])
+            map_url = f"https://www.google.com/maps/dir/{route_url}"
+            st.subheader("📍 Google Maps")
+            st.link_button("Google Mapで開く", map_url)
+        except:
+            st.warning("地図生成に失敗しました")
