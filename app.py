@@ -1,14 +1,13 @@
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
 import urllib.parse
 import requests
-import json
+import re
 
-# ===== LangChain =====
+# LangChain
 from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
-
 
 
 # =========================
@@ -16,15 +15,14 @@ from langchain_core.output_parsers import StrOutputParser
 # =========================
 st.title("🌤️ 天気 × AI 旅行プラン検索アプリ")
 
+
 # =========================
-# 区間入力（Google Flights風）
+# 区間入力
 # =========================
 st.header("🧭 移動ルート（区間ごと）")
 
 if "legs" not in st.session_state:
-    st.session_state.legs = [
-        {"from": "東京", "to": "大阪"}
-    ]
+    st.session_state.legs = [{"from": "東京", "to": "大阪"}]
 
 for i, leg in enumerate(st.session_state.legs):
     col1, col2, col3 = st.columns([4, 4, 1])
@@ -52,6 +50,7 @@ if st.button("➕ 区間を追加"):
     st.session_state.legs.append({"from": "", "to": ""})
     st.rerun()
 
+
 # =========================
 # 日程
 # =========================
@@ -62,6 +61,7 @@ with col1:
     start_date = st.date_input("開始日", value=date.today())
 with col2:
     end_date = st.date_input("終了日")
+
 
 # =========================
 # 個人条件
@@ -76,6 +76,7 @@ budget_type = st.radio(
     ["ポジティブ（余裕あり）", "ネガティブ（節約重視）", "全体"]
 )
 
+
 # =========================
 # 為替
 # =========================
@@ -83,26 +84,24 @@ st.header("💱 為替")
 
 currency = st.selectbox("表示通貨", ["USD", "EUR", "KRW", "CNY", "GBP"])
 
+
 def get_exchange_rate(base="JPY", target="USD"):
     try:
         url = "https://api.frankfurter.app/latest"
-        params = {
-            "from": base,
-            "to": target
-        }
+        params = {"from": base, "to": target}
         res = requests.get(url, params=params, timeout=10)
         res.raise_for_status()
         data = res.json()
         return data["rates"][target]
-    except Exception as e:
-        st.warning(f"為替取得エラー: {e}")
+    except:
         return None
+
 
 rate = get_exchange_rate("JPY", currency)
 
 if rate is None:
     budget_foreign = budget_jpy
-    st.info(f"為替レート取得失敗のため、円ベースで表示します（{budget_jpy} 円）")
+    st.info(f"為替取得失敗 → 円ベース表示（{budget_jpy} 円）")
 else:
     budget_foreign = round(budget_jpy * rate, 2)
     st.info(f"1 JPY = {rate:.4f} {currency} ｜ 約 {budget_foreign} {currency}")
@@ -118,6 +117,7 @@ transport = st.multiselect(
     ["飛行機", "新幹線", "バス", "車"]
 )
 
+
 # =========================
 # 天気
 # =========================
@@ -125,12 +125,12 @@ st.header("☀️ 天気条件")
 
 weather = st.radio("想定する天気", ["晴れ", "雨"])
 
+
 # =========================
-# 検索
+# 検索ボタン
 # =========================
 if st.button("🔍 検索"):
 
-    # ---- ルート構築 ----
     route = []
     for leg in st.session_state.legs:
         if leg["from"]:
@@ -138,113 +138,99 @@ if st.button("🔍 検索"):
         if leg["to"]:
             route.append(leg["to"])
     route = list(dict.fromkeys(route))
-
     route_text = " → ".join(route)
 
-    # =========================
-    # 条件まとめ
-    # =========================
-    st.subheader("📝 検索条件まとめ（コピー用）")
+    total_days = (end_date - start_date).days + 1
 
-    summary = {
-        "移動ルート": route_text,
-        "日程": f"{start_date} 〜 {end_date}",
-        "年齢": age,
-        "予算": f"{budget_jpy} 円（約 {budget_foreign} {currency}）",
-        "予算方針": budget_type,
-        "移動手段": transport,
-        "天気": weather,
-    }
+    if total_days <= 0:
+        st.error("終了日は開始日より後にしてください")
+        st.stop()
 
-    st.code(summary, language="json")
-
-    # =========================
-    # LangChain
-    # =========================
     st.subheader("🧳 AI 旅行プラン")
-
-    template = """
-    あなたはプロの旅行プランナーです。
-
-    【条件】
-    移動ルート: {route}
-    日程: {start_date} 〜 {end_date}
-    年齢: {age}
-    予算: {budget_jpy}円（約 {budget_foreign} {currency}）
-    予算方針: {budget_type}
-    移動手段: {transport}
-    天気: {weather}
-
-    【ルール】
-    - 晴れなら屋外中心、雨なら屋内中心
-    - 実在する地名を使う
-    - 1日ごとに分けて書く
-    - 具体的で詳しく書く
-    - 各日程は十分なボリュームで書く（最低200文字以上）
-    - 旅行ガイドのように魅力的に書く
-
-    【出力形式】
-    必ず以下のJSON形式で出力してください。
-    JSON以外の文章は一切出力しないでください。
-
-    {{
-    "plan": "ここに詳しく長い旅行プラン文章を書く",
-    "places": ["訪問地1", "訪問地2", "訪問地3"]
-    }}
-    """
-
-
-
-
-    prompt = PromptTemplate(
-        input_variables=[
-            "route", "start_date", "end_date",
-            "age", "budget_jpy", "budget_foreign",
-            "currency", "budget_type",
-            "transport", "weather"
-        ],
-        template=template
-    )
 
     llm = ChatOpenAI(
         model="gpt-4o-mini",
         temperature=0.7,
+        streaming=True,
         openai_api_key=st.secrets["OPENAI_API_KEY"]
     )
 
-    chain = prompt | llm | StrOutputParser()
+    # =========================
+    # 日別テンプレート
+    # =========================
+    day_template = """
+あなたはプロの旅行プランナーです。
 
-    response = chain.invoke({
-        "route": route_text,
-        "start_date": start_date,
-        "end_date": end_date,
-        "age": age,
-        "budget_jpy": budget_jpy,
-        "budget_foreign": budget_foreign,
-        "currency": currency,
-        "budget_type": budget_type,
-        "transport": ", ".join(transport),
-        "weather": weather
-    })
+【重要ルール】
+- 必ず最後まで出力する
+- 途中で省略しない
+- 最低300文字以上
+- 実在する地名を使う
+- 年齢が20歳未満なら酒類を提案しない
+- 晴れなら屋外中心、雨なら屋内中心
 
-    data = json.loads(response)
+【条件】
+Day{day_number}
+日付: {current_date}
+移動ルート: {route}
+年齢: {age}
+予算方針: {budget_type}
+移動手段: {transport}
+天気: {weather}
 
-    plan = data["plan"]
-    places = data["places"]
+旅行ガイドのように魅力的に書いてください。
+"""
 
-    st.markdown(plan)
+    full_plan = ""
+    places_set = set()
+
+    for i in range(total_days):
+
+        current_date = start_date + timedelta(days=i)
+
+        prompt = PromptTemplate(
+            input_variables=[
+                "day_number", "current_date", "route",
+                "age", "budget_type", "transport", "weather"
+            ],
+            template=day_template
+        )
+
+        chain = prompt | llm | StrOutputParser()
+
+        st.markdown(f"### 🗓 Day {i+1} ({current_date})")
+
+        day_text = ""
+        placeholder = st.empty()
+
+        for chunk in chain.stream({
+            "day_number": i+1,
+            "current_date": current_date,
+            "route": route_text,
+            "age": age,
+            "budget_type": budget_type,
+            "transport": ", ".join(transport),
+            "weather": weather
+        }):
+            day_text += chunk
+            placeholder.markdown(day_text)
+
+        full_plan += f"\n\nDay{i+1}\n{day_text}"
+
+        found_places = re.findall(r"[一-龠ぁ-んァ-ンA-Za-z]{3,}", day_text)
+        for p in found_places:
+            places_set.add(p)
 
     # =========================
     # Google Maps
     # =========================
     st.subheader("📍 Google Maps ルート")
 
-    map_route = "/".join([urllib.parse.quote(p) for p in places])
-    map_url = f"https://www.google.com/maps/dir/{map_route}"
+    places = list(places_set)[:8]
 
-    st.markdown(f"### 🗺️ ルートを地図で表示")
-    st.link_button(
-        "Google Mapでルートを開く",
-        map_url
-    )
-
+    if places:
+        map_route = "/".join([urllib.parse.quote(p) for p in places])
+        map_url = f"https://www.google.com/maps/dir/{map_route}"
+        st.link_button("Google Mapでルートを開く", map_url)
+    else:
+        st.info("地図用地点が抽出できませんでした。")
