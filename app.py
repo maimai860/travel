@@ -131,6 +131,7 @@ weather = st.radio("想定する天気", ["晴れ", "雨"])
 # =========================
 if st.button("🔍 検索"):
 
+    # ルート整理
     route = []
     for leg in st.session_state.legs:
         if leg["from"]:
@@ -138,13 +139,27 @@ if st.button("🔍 検索"):
         if leg["to"]:
             route.append(leg["to"])
     route = list(dict.fromkeys(route))
-    route_text = " → ".join(route)
+
+    if len(route) < 2:
+        st.error("出発地と到着地を入力してください")
+        st.stop()
+
+    start_city = route[0]
+    end_city = route[-1]
 
     total_days = (end_date - start_date).days + 1
 
     if total_days <= 0:
         st.error("終了日は開始日より後にしてください")
         st.stop()
+
+    # 文字数調整
+    if total_days <= 3:
+        min_chars = 300
+    elif total_days <= 6:
+        min_chars = 250
+    else:
+        min_chars = 150
 
     st.subheader("🧳 AI 旅行プラン")
 
@@ -155,24 +170,24 @@ if st.button("🔍 検索"):
         openai_api_key=st.secrets["OPENAI_API_KEY"]
     )
 
-    # =========================
-    # 日別テンプレート
-    # =========================
     day_template = """
 あなたはプロの旅行プランナーです。
 
 【重要ルール】
 - 必ず最後まで出力する
-- 途中で省略しない
-- 最低300文字以上
+- Day1のみ出発地から最終目的地へ移動する
+- Day2以降は最終目的地を拠点に観光する
+- 同じ都市間移動を繰り返さない
 - 実在する地名を使う
 - 年齢が20歳未満なら酒類を提案しない
 - 晴れなら屋外中心、雨なら屋内中心
+- 各日程は最低{min_chars}文字以上
 
 【条件】
 Day{day_number}
 日付: {current_date}
-移動ルート: {route}
+出発地: {start_city}
+最終目的地: {end_city}
 年齢: {age}
 予算方針: {budget_type}
 移動手段: {transport}
@@ -190,8 +205,15 @@ Day{day_number}
 
         prompt = PromptTemplate(
             input_variables=[
-                "day_number", "current_date", "route",
-                "age", "budget_type", "transport", "weather"
+                "day_number",
+                "current_date",
+                "start_city",
+                "end_city",
+                "age",
+                "budget_type",
+                "transport",
+                "weather",
+                "min_chars"
             ],
             template=day_template
         )
@@ -206,11 +228,13 @@ Day{day_number}
         for chunk in chain.stream({
             "day_number": i+1,
             "current_date": current_date,
-            "route": route_text,
+            "start_city": start_city,
+            "end_city": end_city,
             "age": age,
             "budget_type": budget_type,
             "transport": ", ".join(transport),
-            "weather": weather
+            "weather": weather,
+            "min_chars": min_chars
         }):
             day_text += chunk
             placeholder.markdown(day_text)
