@@ -1,5 +1,5 @@
 import streamlit as st
-import streamlit_authenticator as stauth
+from streamlit_authenticator.utilities.hasher import Hasher
 from datetime import date, timedelta
 import urllib.parse
 import re
@@ -16,12 +16,11 @@ from langchain_core.output_parsers import StrOutputParser
 generate_hash = True   # ← 一度だけ True にする
 
 if generate_hash:
-    password = "test123"  # ← 自分が使いたいパスワード
-    hashed = stauth.Hasher([password]).generate()
+    password = "test123"
+    hashed = Hasher.hash(password)
     st.write("生成されたハッシュ値:")
     st.write(hashed)
     st.stop()
-
 
 # =========================
 # 認証設定
