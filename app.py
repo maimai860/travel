@@ -9,19 +9,6 @@ from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
-
-# =========================
-# 🔐 ハッシュ生成（1回だけ使う）
-# =========================
-generate_hash = True   # ← 一度だけ True にする
-
-if generate_hash:
-    password = "test123"
-    hashed = Hasher.hash(password)
-    st.write("生成されたハッシュ値:")
-    st.write(hashed)
-    st.stop()
-
 # =========================
 # 認証設定
 # =========================
@@ -32,7 +19,7 @@ config = {
             'admin': {
                 'name': 'Admin',
                 # ↓ ここに生成したハッシュを貼る
-                'password': '$2b$12$XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+                'password': '2b12$BalfzJXdiqg2ir346ws1g.9kSFeSPu4fKfKgFJej//ViRlqNoH5T2'
             }
         }
     },
