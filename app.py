@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit_authenticator as stauth
 from streamlit_authenticator.utilities.hasher import Hasher
 from datetime import date, timedelta
 import urllib.parse
