@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit_authenticator as stauth
 from streamlit_authenticator.utilities.hasher import Hasher
 from datetime import date, timedelta
 import urllib.parse
@@ -10,17 +11,6 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
 
-# =========================
-# 🔐 ハッシュ生成（1回だけ使う）
-# =========================
-generate_hash = True   # ← 一度だけ True にする
-
-if generate_hash:
-    password = "test123"
-    hashed = Hasher.hash(password)
-    st.write("生成されたハッシュ値:")
-    st.write(hashed)
-    st.stop()
 
 # =========================
 # 認証設定
@@ -32,7 +22,7 @@ config = {
             'admin': {
                 'name': 'Admin',
                 # ↓ ここに生成したハッシュを貼る
-                'password': '$2b$12$XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+                'password': '$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q'
             }
         }
     },
@@ -50,7 +40,11 @@ authenticator = stauth.Authenticate(
     config['cookie']['expiry_days']
 )
 
-name, authentication_status, username = authenticator.login('Login', 'main')
+authenticator.login(location="main")
+
+authentication_status = st.session_state.get("authentication_status")
+name = st.session_state.get("name")
+username = st.session_state.get("username")
 
 
 # =========================
@@ -59,7 +53,7 @@ name, authentication_status, username = authenticator.login('Login', 'main')
 
 if authentication_status:
 
-    authenticator.logout("Logout", "sidebar")
+    authenticator.logout(location="sidebar")
     st.sidebar.write(f"ようこそ {name}")
 
     st.title("🌤️ 天気 × AI 旅行プラン検索アプリ")
