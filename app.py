@@ -1,7 +1,7 @@
 import streamlit as st
+import streamlit_authenticator as stauth
 from datetime import date, timedelta
 import urllib.parse
-import requests
 import re
 import json
 
@@ -10,107 +10,159 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
 
-st.title("🌤️ 天気 × AI 旅行プラン検索アプリ")
+# =========================
+# 🔐 ハッシュ生成（1回だけ使う）
+# =========================
+generate_hash = True   # ← 一度だけ True にする
+
+if generate_hash:
+    password = "test123"  # ← 自分が使いたいパスワード
+    hashed = stauth.Hasher([password]).generate()
+    st.write("生成されたハッシュ値:")
+    st.write(hashed)
+    st.stop()
+
 
 # =========================
-# ルート入力
+# 認証設定
 # =========================
-st.header("🧭 移動ルート")
 
-if "legs" not in st.session_state:
-    st.session_state.legs = [{"from": "東京", "to": "大阪"}]
-
-for i, leg in enumerate(st.session_state.legs):
-    col1, col2 = st.columns(2)
-    leg["from"] = col1.text_input(f"出発地{i+1}", value=leg["from"], key=f"from_{i}")
-    leg["to"] = col2.text_input(f"到着地{i+1}", value=leg["to"], key=f"to_{i}")
-
-# =========================
-# 日程
-# =========================
-st.header("📅 日程")
-
-start_date = st.date_input("開始日", value=date.today())
-end_date = st.date_input("終了日")
-
-# =========================
-# 条件
-# =========================
-st.header("👤 条件")
-
-age = st.slider("年齢", 0, 100, 30)
-budget_jpy = st.number_input("総予算（円）", min_value=0, step=1000)
-
-budget_type = st.radio(
-    "予算タイプ",
-    ["ポジティブ（余裕あり）", "ネガティブ（節約重視）", "全体"]
-)
-
-weather = st.radio("天気", ["晴れ", "雨"])
-
-transport = st.multiselect(
-    "利用交通手段",
-    ["飛行機", "新幹線", "バス", "車"]
-)
-
-# =========================
-# 所要時間辞書
-# =========================
-travel_time_table = {
-    ("東京", "大阪", "新幹線"): "約2時間30分",
-    ("東京", "大阪", "飛行機"): "約1時間（＋空港移動約1時間）",
-    ("東京", "大阪", "車"): "約6時間",
-    ("東京", "大阪", "バス"): "約8時間",
+config = {
+    'credentials': {
+        'usernames': {
+            'admin': {
+                'name': 'Admin',
+                # ↓ ここに生成したハッシュを貼る
+                'password': '$2b$12$XXXXXXXXXXXXXXXXXXXXXXXXXXXX'
+            }
+        }
+    },
+    'cookie': {
+        'expiry_days': 1,
+        'key': 'some_signature_key',
+        'name': 'some_cookie_name'
+    }
 }
 
-def get_travel_time(start, end, methods):
-    for m in methods:
-        key = (start, end, m)
-        if key in travel_time_table:
-            return f"{m} {travel_time_table[key]}"
-    if methods:
-        return f"{methods[0]} 約3〜5時間"
-    return "移動 約3時間"
+authenticator = stauth.Authenticate(
+    config['credentials'],
+    config['cookie']['name'],
+    config['cookie']['key'],
+    config['cookie']['expiry_days']
+)
+
+name, authentication_status, username = authenticator.login('Login', 'main')
 
 
 # =========================
-# 検索
+# ログイン成功時のみアプリ表示
 # =========================
-if st.button("🔍 検索"):
 
-    route = []
-    for leg in st.session_state.legs:
-        if leg["from"]:
-            route.append(leg["from"])
-        if leg["to"]:
-            route.append(leg["to"])
-    route = list(dict.fromkeys(route))
+if authentication_status:
 
-    if len(route) < 2:
-        st.error("出発地と到着地を入力してください")
-        st.stop()
+    authenticator.logout("Logout", "sidebar")
+    st.sidebar.write(f"ようこそ {name}")
 
-    start_city = route[0]
-    end_city = route[-1]
+    st.title("🌤️ 天気 × AI 旅行プラン検索アプリ")
 
-    total_days = (end_date - start_date).days + 1
+    # =========================
+    # ルート入力
+    # =========================
+    st.header("🧭 移動ルート")
 
-    if total_days <= 0:
-        st.error("日程が不正です")
-        st.stop()
+    if "legs" not in st.session_state:
+        st.session_state.legs = [{"from": "東京", "to": "大阪"}]
 
-    daily_budget = int(budget_jpy / total_days)
+    for i, leg in enumerate(st.session_state.legs):
+        col1, col2 = st.columns(2)
+        leg["from"] = col1.text_input(f"出発地{i+1}", value=leg["from"], key=f"from_{i}")
+        leg["to"] = col2.text_input(f"到着地{i+1}", value=leg["to"], key=f"to_{i}")
 
-    travel_info = get_travel_time(start_city, end_city, transport)
+    # =========================
+    # 日程
+    # =========================
+    st.header("📅 日程")
 
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0.7,
-        streaming=True,
-        openai_api_key=st.secrets["OPENAI_API_KEY"]
+    start_date = st.date_input("開始日", value=date.today())
+    end_date = st.date_input("終了日")
+
+    # =========================
+    # 条件
+    # =========================
+    st.header("👤 条件")
+
+    age = st.slider("年齢", 0, 100, 30)
+    budget_jpy = st.number_input("総予算（円）", min_value=0, step=1000)
+
+    budget_type = st.radio(
+        "予算タイプ",
+        ["ポジティブ（余裕あり）", "ネガティブ（節約重視）", "全体"]
     )
 
-    template = """
+    weather = st.radio("天気", ["晴れ", "雨"])
+
+    transport = st.multiselect(
+        "利用交通手段",
+        ["飛行機", "新幹線", "バス", "車"]
+    )
+
+    # =========================
+    # 所要時間辞書
+    # =========================
+    travel_time_table = {
+        ("東京", "大阪", "新幹線"): "約2時間30分",
+        ("東京", "大阪", "飛行機"): "約1時間（＋空港移動約1時間）",
+        ("東京", "大阪", "車"): "約6時間",
+        ("東京", "大阪", "バス"): "約8時間",
+    }
+
+    def get_travel_time(start, end, methods):
+        for m in methods:
+            key = (start, end, m)
+            if key in travel_time_table:
+                return f"{m} {travel_time_table[key]}"
+        if methods:
+            return f"{methods[0]} 約3〜5時間"
+        return "移動 約3時間"
+
+    # =========================
+    # 検索
+    # =========================
+    if st.button("🔍 検索"):
+
+        route = []
+        for leg in st.session_state.legs:
+            if leg["from"]:
+                route.append(leg["from"])
+            if leg["to"]:
+                route.append(leg["to"])
+        route = list(dict.fromkeys(route))
+
+        if len(route) < 2:
+            st.error("出発地と到着地を入力してください")
+            st.stop()
+
+        start_city = route[0]
+        end_city = route[-1]
+
+        total_days = (end_date - start_date).days + 1
+
+        if total_days <= 0:
+            st.error("日程が不正です")
+            st.stop()
+
+        daily_budget = int(budget_jpy / total_days)
+
+        travel_info = get_travel_time(start_city, end_city, transport)
+
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.7,
+            streaming=True,
+            openai_api_key=st.secrets["OPENAI_API_KEY"]
+        )
+
+        template = """
 あなたはプロ旅行プランナーです。
 
 【絶対ルール】
@@ -137,45 +189,52 @@ ALL_SPOTS:
 開始日: {start_date}
 """
 
-    prompt = PromptTemplate(
-        input_variables=[
-            "total_days","end_city","start_city","travel_info",
-            "budget_jpy","daily_budget","budget_type",
-            "weather","start_date"
-        ],
-        template=template
-    )
+        prompt = PromptTemplate(
+            input_variables=[
+                "total_days","end_city","start_city","travel_info",
+                "budget_jpy","daily_budget","budget_type",
+                "weather","start_date"
+            ],
+            template=template
+        )
 
-    chain = prompt | llm | StrOutputParser()
+        chain = prompt | llm | StrOutputParser()
 
-    st.subheader("🧳 旅行プラン")
+        st.subheader("🧳 旅行プラン")
 
-    full_text = ""
-    placeholder = st.empty()
+        full_text = ""
+        placeholder = st.empty()
 
-    for chunk in chain.stream({
-        "total_days": total_days,
-        "end_city": end_city,
-        "start_city": start_city,
-        "travel_info": travel_info,
-        "budget_jpy": budget_jpy,
-        "daily_budget": daily_budget,
-        "budget_type": budget_type,
-        "weather": weather,
-        "start_date": start_date
-    }):
-        full_text += chunk
-        placeholder.markdown(full_text)
+        for chunk in chain.stream({
+            "total_days": total_days,
+            "end_city": end_city,
+            "start_city": start_city,
+            "travel_info": travel_info,
+            "budget_jpy": budget_jpy,
+            "daily_budget": daily_budget,
+            "budget_type": budget_type,
+            "weather": weather,
+            "start_date": start_date
+        }):
+            full_text += chunk
+            placeholder.markdown(full_text)
 
-    # 観光地抽出
-    match = re.search(r"ALL_SPOTS:\s*(\[[^\]]+\])", full_text)
+        # 観光地抽出
+        match = re.search(r"ALL_SPOTS:\s*(\[[^\]]+\])", full_text)
 
-    if match:
-        try:
-            spots = json.loads(match.group(1))
-            route_url = "/".join([urllib.parse.quote(p) for p in spots])
-            map_url = f"https://www.google.com/maps/dir/{route_url}"
-            st.subheader("📍 Google Maps")
-            st.link_button("Google Mapで開く", map_url)
-        except:
-            st.warning("地図生成に失敗しました")
+        if match:
+            try:
+                spots = json.loads(match.group(1))
+                route_url = "/".join([urllib.parse.quote(p) for p in spots])
+                map_url = f"https://www.google.com/maps/dir/{route_url}"
+                st.subheader("📍 Google Maps")
+                st.link_button("Google Mapで開く", map_url)
+            except:
+                st.warning("地図生成に失敗しました")
+
+
+elif authentication_status is False:
+    st.error("ユーザー名またはパスワードが間違っています")
+
+elif authentication_status is None:
+    st.warning("ユーザー名とパスワードを入力してください")
