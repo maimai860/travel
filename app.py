@@ -121,6 +121,38 @@ if authentication_status:
     # =========================
     # 検索
     # =========================
+    # 入力チェック
+    if not start_date or not end_date:
+        st.error("日程を入力してください")
+        st.stop()
+
+    if not budget_jpy or budget_jpy <= 0:
+        st.error("予算を入力してください")
+        st.stop()
+
+    if not transport:
+        st.error("利用交通手段を選択してください")
+        st.stop()
+
+    if not weather:
+        st.error("天気を選択してください")
+        st.stop()
+
+    if not budget_type:
+        st.error("予算タイプを選択してください")
+        st.stop()
+
+    # 日数制限
+    total_days = (end_date - start_date).days + 1
+
+    if total_days <= 0:
+        st.error("日程が不正です")
+        st.stop()
+
+    if total_days >= 30:
+        st.error("30日以上の旅行プランは生成できません")
+        st.stop()
+
     if st.button("🔍 検索"):
 
         route = []
@@ -166,6 +198,9 @@ if authentication_status:
 - 実在する観光地のみ
 - 朝・昼・夜のみ
 - 各行は「時間帯：場所 - 一言コメント」
+- 徒歩10〜15分圏内は必ず同日にまとめる
+- 同一エリアは別日に分けない
+- 地理的に非効率な分割は禁止
 
 【Day1最初に必ず書く】
 移動：{start_city} → {end_city}（{travel_info}）
