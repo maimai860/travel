@@ -21,31 +21,40 @@ MIN_HOTEL_COST = 6000
 # =========================
 # 距離取得
 # =========================
-def get_distance_and_time(origin, destination, api_key, mode="driving"):
-    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
+def get_distance_and_time(origin, destination):
+    try:
+        # Nominatimで座標取得
+        geo_url = "https://nominatim.openstreetmap.org/search"
+        
+        params_origin = {"q": origin, "format": "json"}
+        params_dest = {"q": destination, "format": "json"}
+        
+        origin_res = requests.get(geo_url, params=params_origin, headers={"User-Agent": "travel-app"}).json()
+        dest_res = requests.get(geo_url, params=params_dest, headers={"User-Agent": "travel-app"}).json()
 
-    params = {
-        "origins": origin,
-        "destinations": destination,
-        "mode": mode,
-        "language": "ja",
-        "key": api_key
-    }
+        if not origin_res or not dest_res:
+            return None, None
 
-    res = requests.get(url, params=params)
-    data = res.json()
+        lat1 = origin_res[0]["lat"]
+        lon1 = origin_res[0]["lon"]
+        lat2 = dest_res[0]["lat"]
+        lon2 = dest_res[0]["lon"]
 
-    if data["status"] != "OK":
+        # OSRMでルート距離取得
+        route_url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
+        route_res = requests.get(route_url).json()
+
+        if route_res["code"] != "Ok":
+            return None, None
+
+        distance_km = route_res["routes"][0]["distance"] / 1000
+        duration_min = route_res["routes"][0]["duration"] / 60
+
+        return distance_km, duration_min
+
+    except:
         return None, None
 
-    element = data["rows"][0]["elements"][0]
-    if element["status"] != "OK":
-        return None, None
-
-    distance_km = element["distance"]["value"] / 1000
-    duration_min = element["duration"]["value"] / 60
-
-    return distance_km, duration_min
 
 
 # =========================
@@ -221,8 +230,8 @@ if authentication_status:
             st.stop()
 
         # ===== 距離取得 =====
-        api_key = st.secrets["GOOGLE_MAPS_API_KEY"]
-        distance_km, duration_min = get_distance_and_time(start_city, end_city, api_key)
+        distance_km, duration_min = get_distance_and_time(start_city, end_city)
+
 
         if distance_km is None:
             st.error("距離取得に失敗しました")
