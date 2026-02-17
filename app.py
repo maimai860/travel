@@ -5,11 +5,77 @@ from datetime import date, timedelta
 import urllib.parse
 import re
 import json
+import requests
 
 from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
+# =========================
+# 🔒 絶対ルール定数
+# =========================
+MIN_DAILY_SIGHTSEEING = 3000
+MIN_HOTEL_COST = 6000
+
+
+# =========================
+# 距離取得
+# =========================
+def get_distance_and_time(origin, destination, api_key, mode="driving"):
+    url = "https://maps.googleapis.com/maps/api/distancematrix/json"
+
+    params = {
+        "origins": origin,
+        "destinations": destination,
+        "mode": mode,
+        "language": "ja",
+        "key": api_key
+    }
+
+    res = requests.get(url, params=params)
+    data = res.json()
+
+    if data["status"] != "OK":
+        return None, None
+
+    element = data["rows"][0]["elements"][0]
+    if element["status"] != "OK":
+        return None, None
+
+    distance_km = element["distance"]["value"] / 1000
+    duration_min = element["duration"]["value"] / 60
+
+    return distance_km, duration_min
+
+
+# =========================
+# 距離帯料金モデル
+# =========================
+def estimate_cost(method, distance_km):
+
+    if method == "飛行機":
+        if distance_km < 300:
+            return 15000
+        elif distance_km < 800:
+            return 25000
+        else:
+            return 40000
+
+    if method == "新幹線":
+        if distance_km < 200:
+            return 8000
+        elif distance_km < 500:
+            return 15000
+        else:
+            return 25000
+
+    if method == "バス":
+        return int(distance_km * 10)
+
+    if method == "車":
+        return int(distance_km * 18)
+
+    return 10000
 
 
 # =========================
@@ -94,33 +160,11 @@ if authentication_status:
 
     weather = st.radio("天気", ["晴れ", "雨"])
 
-    transport = st.multiselect(
+    transport = st.radio(
         "利用交通手段",
         ["飛行機", "新幹線", "バス", "車"]
     )
 
-    # =========================
-    # 所要時間辞書
-    # =========================
-    travel_time_table = {
-        ("東京", "大阪", "新幹線"): "約2時間30分",
-        ("東京", "大阪", "飛行機"): "約1時間（＋空港移動約1時間）",
-        ("東京", "大阪", "車"): "約6時間",
-        ("東京", "大阪", "バス"): "約8時間",
-    }
-
-    def get_travel_time(start, end, methods):
-        for m in methods:
-            key = (start, end, m)
-            if key in travel_time_table:
-                return f"{m} {travel_time_table[key]}"
-        if methods:
-            return f"{methods[0]} 約3〜5時間"
-        return "移動 約3時間"
-
-    # =========================
-    # 検索
-    # =========================
     # 入力チェック
     if not start_date or not end_date:
         st.error("日程を入力してください")
@@ -176,9 +220,35 @@ if authentication_status:
             st.error("日程が不正です")
             st.stop()
 
-        daily_budget = int(budget_jpy / total_days)
+        # ===== 距離取得 =====
+        api_key = st.secrets["GOOGLE_MAPS_API_KEY"]
+        distance_km, duration_min = get_distance_and_time(start_city, end_city, api_key)
 
-        travel_info = get_travel_time(start_city, end_city, transport)
+        if distance_km is None:
+            st.error("距離取得に失敗しました")
+            st.stop()
+
+        # ===== 交通費計算 =====
+        main_transport = transport
+        travel_cost = estimate_cost(main_transport, distance_km)
+
+        travel_info = f"{main_transport} 約{int(duration_min)}分 / 約{travel_cost}円"
+
+        # ===== 予算再計算 =====
+        remaining_budget = budget_jpy - travel_cost
+
+        if remaining_budget <= 0:
+            st.error("交通費で予算を超えています")
+            st.stop()
+
+        daily_budget = int(remaining_budget / total_days)
+
+        min_required = MIN_DAILY_SIGHTSEEING + MIN_HOTEL_COST
+
+        if daily_budget < min_required:
+            st.error("1日あたりの最低必要予算を下回っています")
+            st.stop()
+
 
         llm = ChatOpenAI(
             model="gpt-4o-mini",
@@ -186,6 +256,7 @@ if authentication_status:
             streaming=True,
             openai_api_key=st.secrets["OPENAI_API_KEY"]
         )
+        
 
         template = """
 あなたはプロ旅行プランナーです。
@@ -201,6 +272,9 @@ if authentication_status:
 - 徒歩10〜15分圏内は必ず同日にまとめる
 - 同一エリアは別日に分けない
 - 地理的に非効率な分割は禁止
+- 1日予算を超えるプランは絶対に作らない
+- 予算不足の場合は「予算不足のため生成不可」と出力する
+- 入場料や交通費を考慮する
 
 【Day1最初に必ず書く】
 移動：{start_city} → {end_city}（{travel_info}）
