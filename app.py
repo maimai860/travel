@@ -162,7 +162,7 @@ if authentication_status:
 
     budget_type = st.radio(
         "予算タイプ",
-        ["ポジティブ（余裕あり）", "ネガティブ（節約重視）", "全体"]
+        ["余裕プラン", "標準プラン", "節約プラン"]
     )
 
     weather = st.radio("天気", ["晴れ", "雨"])
@@ -175,12 +175,12 @@ if authentication_status:
     # 予算タイプ別最低費用設定
     # =========================
 
-    if budget_type == "ポジティブ（余裕あり）":
+    if budget_type == "余裕プラン":
         MIN_DAILY_SIGHTSEEING = 5000
         MIN_DAILY_FOOD = 5000
         MIN_HOTEL_COST = 10000
 
-    elif budget_type == "ネガティブ（節約重視）":
+    elif budget_type == "節約プラン":
         MIN_DAILY_SIGHTSEEING = 2000
         MIN_DAILY_FOOD = 2000
         MIN_HOTEL_COST = 5000
@@ -255,9 +255,9 @@ if authentication_status:
 
         # ===== 交通費計算 =====
         main_transport = transport
-        travel_cost = estimate_cost(main_transport, distance_km)
+        travel_cost = one_way_cost * 2
 
-        travel_info = f"{main_transport} 約{int(duration_min)}分 / 約{travel_cost}円"
+        travel_info = f"{main_transport} 往復 約{int(duration_min*2)}分 / 約{travel_cost}円"
 
         # ===== 予算再計算 =====
         remaining_budget = budget_jpy - travel_cost
@@ -316,6 +316,11 @@ if authentication_status:
 1日予算: {daily_budget}円
 予算タイプ: {budget_type}
 天気: {weather}
+
+
+【最終日に必ず書く】
+移動：{end_city} → {start_city}
+
 
 最後に必ず以下形式で出力：
 ALL_SPOTS:
