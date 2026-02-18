@@ -255,9 +255,15 @@ if authentication_status:
 
         # ===== 交通費計算 =====
         main_transport = transport
+
+        # 片道料金
+        one_way_cost = estimate_cost(main_transport, distance_km)
+
+        # 往復料金
         travel_cost = one_way_cost * 2
 
         travel_info = f"{main_transport} 往復 約{int(duration_min*2)}分 / 約{travel_cost}円"
+
 
         # ===== 予算再計算 =====
         remaining_budget = budget_jpy - travel_cost
