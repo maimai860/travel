@@ -339,8 +339,10 @@ ALL_SPOTS:
         if match:
             try:
                 spots = json.loads(match.group(1))
-                route_url = "/".join([urllib.parse.quote(p) for p in spots])
-                map_url = f"https://www.google.com/maps/search/{urllib.parse.quote(end_city + ' 観光地')}"
+                route_url = "/".join(
+                    [urllib.parse.quote(f"{p} {end_city}") for p in spots]
+                )
+                map_url = f"https://www.google.com/maps/dir/{route_url}"
                 st.subheader("📍 Google Maps")
                 st.link_button("Google Mapで開く", map_url)
             except:
