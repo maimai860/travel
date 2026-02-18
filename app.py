@@ -14,9 +14,7 @@ from langchain_core.output_parsers import StrOutputParser
 # =========================
 # 🔒 絶対ルール定数
 # =========================
-MIN_DAILY_SIGHTSEEING = 3000
-MIN_HOTEL_COST = 6000
-
+MIN_LOCAL_TRANSPORT = 1000
 
 # =========================
 # 距離取得
@@ -173,6 +171,24 @@ if authentication_status:
         "利用交通手段",
         ["飛行機", "新幹線", "バス", "車"]
     )
+    # =========================
+    # 予算タイプ別最低費用設定
+    # =========================
+
+    if budget_type == "ポジティブ（余裕あり）":
+        MIN_DAILY_SIGHTSEEING = 5000
+        MIN_DAILY_FOOD = 5000
+        MIN_HOTEL_COST = 10000
+
+    elif budget_type == "ネガティブ（節約重視）":
+        MIN_DAILY_SIGHTSEEING = 2000
+        MIN_DAILY_FOOD = 2000
+        MIN_HOTEL_COST = 5000
+
+    else:
+        MIN_DAILY_SIGHTSEEING = 3000
+        MIN_DAILY_FOOD = 3000
+        MIN_HOTEL_COST = 7000
 
     # 入力チェック
     if not start_date or not end_date:
@@ -252,7 +268,12 @@ if authentication_status:
 
         daily_budget = int(remaining_budget / total_days)
 
-        min_required = MIN_DAILY_SIGHTSEEING + MIN_HOTEL_COST
+        min_required = (
+            MIN_DAILY_SIGHTSEEING
+            + MIN_DAILY_FOOD
+            + MIN_HOTEL_COST
+            + MIN_LOCAL_TRANSPORT
+        )
 
         if daily_budget < min_required:
             st.error("1日あたりの最低必要予算を下回っています")
