@@ -41,8 +41,11 @@ with st.expander("新規ユーザー登録"):
         elif new_username in users_data["usernames"]:
             st.warning("ユーザー名は既に存在します")
         else:
-            hashed_pw = Hasher([new_password]).generate()[0]
-            users_data["usernames"][new_username] = {"name": new_name, "password": hashed_pw}
+            hashed_passwords = Hasher([new_password]).generate()  
+            if isinstance(hashed_passwords, list): 
+                hashed_pw = hashed_passwords[0]
+            else:  
+                hashed_pw = hashed_passwords
             with open("users.json", "w") as f:
                 json.dump(users_data, f)
             st.success(f"{new_username} を登録しました。ログインしてください。")
