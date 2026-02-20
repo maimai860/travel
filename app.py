@@ -10,6 +10,11 @@ from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
+
+import streamlit_authenticator as sa
+st.write("Authenticator version:", sa.__version__)
+
+
 # =========================
 # ユーザー情報読み込み（0.3.1 形式）
 # =========================
