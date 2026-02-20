@@ -11,18 +11,20 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
 # =========================
-# ユーザー情報読み込み
+# ユーザー情報読み込み（新形式）
 # =========================
 try:
     with open("users.json", "r") as f:
         users_data = json.load(f)
 except FileNotFoundError:
     users_data = {
-        "usernames": {
-            "admin": {
-                "name": "Admin",
-                # 既存のハッシュパスワード
-                "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
+        "credentials": {
+            "usernames": {
+                "admin": {
+                    "email": "",
+                    "name": "Admin",
+                    "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
+                }
             }
         }
     }
@@ -33,20 +35,21 @@ except FileNotFoundError:
 with st.expander("新規ユーザー登録"):
     new_username = st.text_input("ユーザー名")
     new_name = st.text_input("表示名")
+    new_email = st.text_input("メールアドレス（任意）")
     new_password = st.text_input("パスワード", type="password")
 
     if st.button("登録"):
         if not new_username or not new_password:
             st.error("ユーザー名とパスワードを入力してください")
-        elif new_username in users_data["usernames"]:
+        elif new_username in users_data["credentials"]["usernames"]:
             st.warning("ユーザー名は既に存在します")
         else:
-            # 最新版対応 Hasher
-            hashed_pw_list = Hasher([new_password]).generate()  # リストで返る
-            hashed_pw = hashed_pw_list[0]
+            # 最新版 Hasher
+            hashed_pw = Hasher.hash_password(new_password)
 
-            users_data["usernames"][new_username] = {
+            users_data["credentials"]["usernames"][new_username] = {
                 "name": new_name,
+                "email": new_email,
                 "password": hashed_pw
             }
 
@@ -56,10 +59,10 @@ with st.expander("新規ユーザー登録"):
             st.success(f"{new_username} を登録しました。ログインしてください。")
 
 # =========================
-# 認証設定
+# 認証設定（新形式）
 # =========================
 authenticator = Authenticate(
-    users_data,
+    users_data["credentials"],
     cookie_name="some_cookie_name",
     key="some_signature_key",
     cookie_expiry_days=1
