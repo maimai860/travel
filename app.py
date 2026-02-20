@@ -12,14 +12,13 @@ from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
 # =========================
-# ユーザー情報読み込み（旧形式）
+# ユーザー情報読み込み
 # =========================
 def load_users():
     try:
         with open("users.json", "r") as f:
             data = json.load(f)
 
-        # 新形式にしてしまっていた場合を旧形式に戻す
         if "credentials" in data and "usernames" in data["credentials"]:
             data = {
                 "usernames": data["credentials"]["usernames"]
@@ -70,7 +69,7 @@ with st.expander("新規ユーザー登録"):
             st.success(f"{new_username} を登録しました。ログインしてください。")
 
 # =========================
-# 認証設定（旧仕様）
+# 認証設定
 # =========================
 authenticator = Authenticate(
     users_data,
