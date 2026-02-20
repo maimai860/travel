@@ -1,7 +1,7 @@
 import streamlit as st
 import streamlit_authenticator as stauth
 from streamlit_authenticator.utilities.hasher import Hasher
-from datetime import date, timedelta
+from datetime import date
 import urllib.parse
 import re
 import json
@@ -11,18 +11,66 @@ from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
+# =========================
+# ユーザー情報読み込み
+# =========================
+try:
+    with open("users.json", "r") as f:
+        users_data = json.load(f)
+except FileNotFoundError:
+    users_data = {
+        "usernames": {
+            "admin": {
+                "name": "Admin",
+                "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
+            }
+        }
+    }
 
 # =========================
-# 距離取得
+# 新規ユーザー登録フォーム
+# =========================
+with st.expander("新規ユーザー登録"):
+    new_username = st.text_input("ユーザー名")
+    new_name = st.text_input("表示名")
+    new_password = st.text_input("パスワード", type="password")
+
+    if st.button("登録"):
+        if not new_username or not new_password:
+            st.error("ユーザー名とパスワードを入力してください")
+        elif new_username in users_data["usernames"]:
+            st.warning("ユーザー名は既に存在します")
+        else:
+            hashed_pw = Hasher([new_password]).generate()[0]
+            users_data["usernames"][new_username] = {"name": new_name, "password": hashed_pw}
+            with open("users.json", "w") as f:
+                json.dump(users_data, f)
+            st.success(f"{new_username} を登録しました。ログインしてください。")
+
+# =========================
+# 認証設定
+# =========================
+authenticator = stauth.Authenticate(
+    users_data,
+    cookie_name="some_cookie_name",
+    key="some_signature_key",
+    cookie_expiry_days=1
+)
+authenticator.login(location="main")
+
+authentication_status = st.session_state.get("authentication_status")
+name = st.session_state.get("name")
+username = st.session_state.get("username")
+
+# =========================
+# 距離取得関数
 # =========================
 def get_distance_and_time(origin, destination):
     try:
-        # Nominatimで座標取得
         geo_url = "https://nominatim.openstreetmap.org/search"
-        
         params_origin = {"q": origin, "format": "json"}
         params_dest = {"q": destination, "format": "json"}
-        
+
         origin_res = requests.get(geo_url, params=params_origin, headers={"User-Agent": "travel-app"}).json()
         dest_res = requests.get(geo_url, params=params_dest, headers={"User-Agent": "travel-app"}).json()
 
@@ -34,7 +82,6 @@ def get_distance_and_time(origin, destination):
         lat2 = dest_res[0]["lat"]
         lon2 = dest_res[0]["lon"]
 
-        # OSRMでルート距離取得
         route_url = f"http://router.project-osrm.org/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=false"
         route_res = requests.get(route_url).json()
 
@@ -43,83 +90,31 @@ def get_distance_and_time(origin, destination):
 
         distance_km = route_res["routes"][0]["distance"] / 1000
         duration_min = route_res["routes"][0]["duration"] / 60
-
         return distance_km, duration_min
-
     except:
         return None, None
 
-
-
 # =========================
-# 距離帯料金モデル
+# 交通費計算関数
 # =========================
 def estimate_cost(method, distance_km):
-
     if method == "飛行機":
-        if distance_km < 300:
-            return 15000
-        elif distance_km < 800:
-            return 25000
-        else:
-            return 40000
-
+        if distance_km < 300: return 15000
+        elif distance_km < 800: return 25000
+        else: return 40000
     if method == "新幹線":
-        if distance_km < 200:
-            return 8000
-        elif distance_km < 500:
-            return 15000
-        else:
-            return 25000
-
+        if distance_km < 200: return 8000
+        elif distance_km < 500: return 15000
+        else: return 25000
     if method == "バス":
         return int(distance_km * 10)
-
     if method == "車":
         return int(distance_km * 18)
-
     return 10000
 
-
 # =========================
-# 認証設定
+# ログイン成功時の画面
 # =========================
-
-config = {
-    'credentials': {
-        'usernames': {
-            'admin': {
-                'name': 'Admin',
-                # ↓ ここに生成したハッシュを貼る
-                'password': '$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q'
-            }
-        }
-    },
-    'cookie': {
-        'expiry_days': 1,
-        'key': 'some_signature_key',
-        'name': 'some_cookie_name'
-    }
-}
-
-authenticator = stauth.Authenticate(
-    config['credentials'],
-    config['cookie']['name'],
-    config['cookie']['key'],
-    config['cookie']['expiry_days']
-)
-
-authenticator.login(location="main")
-
-authentication_status = st.session_state.get("authentication_status")
-name = st.session_state.get("name")
-username = st.session_state.get("username")
-
-
-# =========================
-# ログイン成功時のみアプリ表示
-# =========================
-
 if authentication_status:
 
     authenticator.logout(location="sidebar")
@@ -127,11 +122,8 @@ if authentication_status:
 
     st.title("🌤️ 天気 × AI 旅行プラン検索アプリ")
 
-    # =========================
-    # ルート入力
-    # =========================
+    # ===== 移動ルート =====
     st.header("🧭 移動ルート")
-
     if "legs" not in st.session_state:
         st.session_state.legs = [{"from": "東京", "to": "大阪"}]
 
@@ -140,130 +132,84 @@ if authentication_status:
         leg["from"] = col1.text_input(f"出発地{i+1}", value=leg["from"], key=f"from_{i}")
         leg["to"] = col2.text_input(f"到着地{i+1}", value=leg["to"], key=f"to_{i}")
 
-    # =========================
-    # 日程
-    # =========================
+    # ===== 日程 =====
     st.header("📅 日程")
-
     start_date = st.date_input("開始日", value=date.today())
     end_date = st.date_input("終了日")
 
-    # =========================
-    # 条件
-    # =========================
+    # ===== 条件 =====
     st.header("👤 条件")
-
     age = st.slider("年齢", 0, 100, 30)
     budget_jpy = st.number_input("総予算（円）", min_value=0, step=1000)
-
-    min_daily_budget = st.number_input(
-        "希望する1日あたり最低使用額（円）",
-        min_value=0,
-        step=1000,
-        value=10000
-    )
-
+    min_daily_budget = st.number_input("希望する1日あたり最低使用額（円）", min_value=0, step=1000, value=10000)
     weather = st.radio("天気", ["晴れ", "雨"])
-
-    transport = st.radio(
-        "利用交通手段",
-        ["飛行機", "新幹線", "バス", "車"]
-    )
-
+    transport = st.radio("利用交通手段", ["飛行機", "新幹線", "バス", "車"])
 
     # 入力チェック
     if not start_date or not end_date:
         st.error("日程を入力してください")
         st.stop()
-
-    if not budget_jpy or budget_jpy <= 0:
+    if budget_jpy <= 0:
         st.error("予算を入力してください")
         st.stop()
-
     if not transport:
         st.error("利用交通手段を選択してください")
         st.stop()
-
     if not weather:
         st.error("天気を選択してください")
         st.stop()
 
-
-    # 日数制限
     total_days = (end_date - start_date).days + 1
-
     if total_days <= 0:
         st.error("日程が不正です")
         st.stop()
-
     if total_days >= 30:
         st.error("30日以上の旅行プランは生成できません")
         st.stop()
 
+    # 検索ボタン
     if st.button("🔍 検索"):
 
+        # 出発・到着地の整理
         route = []
         for leg in st.session_state.legs:
-            if leg["from"]:
-                route.append(leg["from"])
-            if leg["to"]:
-                route.append(leg["to"])
+            if leg["from"]: route.append(leg["from"])
+            if leg["to"]: route.append(leg["to"])
         route = list(dict.fromkeys(route))
-
         if len(route) < 2:
             st.error("出発地と到着地を入力してください")
             st.stop()
-
         start_city = route[0]
         end_city = route[-1]
 
-        total_days = (end_date - start_date).days + 1
-
-        if total_days <= 0:
-            st.error("日程が不正です")
-            st.stop()
-
-        # ===== 距離取得 =====
+        # 距離計算
         distance_km, _ = get_distance_and_time(start_city, end_city)
-
-
         if distance_km is None:
             st.error("距離取得に失敗しました")
             st.stop()
 
-        # ===== 交通費計算 =====
-        main_transport = transport
-
-        # 片道料金
-        one_way_cost = estimate_cost(main_transport, distance_km)
-
-        # 往復料金
+        # 交通費計算
+        one_way_cost = estimate_cost(transport, distance_km)
         travel_cost = one_way_cost * 2
-        travel_info = f"{main_transport} 往復 約{travel_cost}円"
-        
+        travel_info = f"{transport} 往復 約{travel_cost}円"
 
-
-        # ===== 予算再計算 =====
+        # 予算計算
         remaining_budget = budget_jpy - travel_cost
-
         if remaining_budget <= 0:
             st.error("交通費で予算を超えています")
             st.stop()
-
         daily_budget = remaining_budget / total_days
-
         if daily_budget < min_daily_budget:
             st.error("入力された1日最低予算を満たせません")
             st.stop()
 
-
+        # ===== AI旅行プラン生成 =====
         llm = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0.7,
             streaming=True,
             openai_api_key=st.secrets["OPENAI_API_KEY"]
         )
-        
 
         template = """
 あなたはプロ旅行プランナーです。
@@ -296,10 +242,8 @@ if authentication_status:
 ユーザー指定1日最低予算: {min_daily_budget}円
 天気: {weather}
 
-
 【最終日に必ず書く】
 移動：{end_city} → {start_city}
-
 
 最後に必ず以下形式で出力：
 ALL_SPOTS:
@@ -318,9 +262,7 @@ ALL_SPOTS:
         )
 
         chain = prompt | llm | StrOutputParser()
-
         st.subheader("🧳 旅行プラン")
-
         full_text = ""
         placeholder = st.empty()
 
@@ -340,24 +282,19 @@ ALL_SPOTS:
             full_text += chunk
             placeholder.markdown(full_text)
 
-        # 観光地抽出
+        # 観光地抽出 & Google Mapsリンク
         match = re.search(r"ALL_SPOTS:\s*(\[[^\]]+\])", full_text)
-
         if match:
             try:
                 spots = json.loads(match.group(1))
-                route_url = "/".join(
-                    [urllib.parse.quote(f"{p} {end_city}") for p in spots]
-                )
+                route_url = "/".join([urllib.parse.quote(f"{p} {end_city}") for p in spots])
                 map_url = f"https://www.google.com/maps/dir/{route_url}"
                 st.subheader("📍 Google Maps")
-                st.link_button("Google Mapで開く", map_url)
+                st.markdown(f"[Google Mapで開く]({map_url})", unsafe_allow_html=True)
             except:
                 st.warning("地図生成に失敗しました")
 
-
 elif authentication_status is False:
     st.error("ユーザー名またはパスワードが間違っています")
-
 elif authentication_status is None:
     st.warning("ユーザー名とパスワードを入力してください")
