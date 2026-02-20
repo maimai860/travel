@@ -11,10 +11,6 @@ from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
-# =========================
-# 🔒 絶対ルール定数
-# =========================
-MIN_LOCAL_TRANSPORT = 1000
 
 # =========================
 # 距離取得
@@ -248,20 +244,7 @@ if authentication_status:
 
 
         # ===== 予算再計算 =====
-        remaining_budget = budget_jpy - travel_cost
-
-        if remaining_budget <= 0:
-            st.error("交通費で予算を超えています")
-            st.stop()
-
-        daily_budget = int(remaining_budget / total_days)
-
-        # 絶対下限（システム側の最低保証）
-        SYSTEM_MIN_DAILY = 8000 + MIN_LOCAL_TRANSPORT
-
-        if min_daily_budget < SYSTEM_MIN_DAILY:
-            st.error(f"1日最低{SYSTEM_MIN_DAILY}円以上で設定してください")
-            st.stop()
+        daily_budget = budget_jpy / total_days
 
         if daily_budget < min_daily_budget:
             st.error("入力された1日最低予算を満たせません")
@@ -292,7 +275,6 @@ if authentication_status:
 - 地理的に非効率な分割は禁止
 - 1日予算を超えるプランは絶対に作らない
 - 予算不足の場合は「予算不足のため生成不可」と出力する
-- 入場料や交通費を考慮する
 - 観光地は必ず {end_city} 市内に存在するもののみ
 - {end_city} 以外の都道府県の観光地は絶対に出さない
 - 住所が {end_city} に属するものだけ使用する
