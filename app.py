@@ -1,6 +1,6 @@
 import streamlit as st
 import streamlit_authenticator as stauth
-from streamlit_authenticator.utilities.hasher import Hasher
+from streamlit_authenticator import Authenticate, Hasher
 from datetime import date
 import urllib.parse
 import re
@@ -41,11 +41,11 @@ with st.expander("新規ユーザー登録"):
         elif new_username in users_data["usernames"]:
             st.warning("ユーザー名は既に存在します")
         else:
-            hhashed_pw = stauth.Hasher([new_password]).generate()[0]  
-            if isinstance(hashed_passwords, list): 
-                hashed_pw = hashed_passwords[0]
-            else:  
-                hashed_pw = hashed_passwords
+            hashed_pw = Hasher([new_password]).generate()[0]
+            users_data["usernames"][new_username] = {
+                "name": new_name,
+                "password": hashed_pw
+            }
             with open("users.json", "w") as f:
                 json.dump(users_data, f)
             st.success(f"{new_username} を登録しました。ログインしてください。")
