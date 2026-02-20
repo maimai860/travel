@@ -41,9 +41,7 @@ with st.expander("新規ユーザー登録"):
         elif new_username in users_data["usernames"]:
             st.warning("ユーザー名は既に存在します")
         else:
-            # 最新版対応 Hasher
             hashed_pw = Hasher([new_password]).generate()[0]
-            hashed_pw = hashed_pw_list[0]
 
             users_data["usernames"][new_username] = {
                 "name": new_name,
