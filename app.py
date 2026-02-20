@@ -224,7 +224,7 @@ if authentication_status:
             st.stop()
 
         # ===== 距離取得 =====
-        distance_km, duration_min = get_distance_and_time(start_city, end_city)
+        distance_km, _ = get_distance_and_time(start_city, end_city)
 
 
         if distance_km is None:
@@ -239,12 +239,18 @@ if authentication_status:
 
         # 往復料金
         travel_cost = one_way_cost * 2
-
-        travel_info = f"{main_transport} 往復 約{int(duration_min*2)}分 / 約{travel_cost}円"
+        travel_info = f"{main_transport} 往復 約{travel_cost}円"
+        
 
 
         # ===== 予算再計算 =====
-        daily_budget = budget_jpy / total_days
+        remaining_budget = budget_jpy - travel_cost
+
+        if remaining_budget <= 0:
+            st.error("交通費で予算を超えています")
+            st.stop()
+
+        daily_budget = remaining_budget / total_days
 
         if daily_budget < min_daily_budget:
             st.error("入力された1日最低予算を満たせません")
@@ -283,7 +289,10 @@ if authentication_status:
 移動：{start_city} → {end_city}（{travel_info}）
 
 総予算: {budget_jpy}円
-1日予算: {daily_budget}円
+交通費: {travel_cost}円
+観光に使える残額: {remaining_budget}円
+1日あたり利用可能額: {daily_budget}円
+※この金額を絶対に超えないこと
 ユーザー指定1日最低予算: {min_daily_budget}円
 天気: {weather}
 
@@ -302,8 +311,8 @@ ALL_SPOTS:
         prompt = PromptTemplate(
             input_variables=[
                 "total_days","end_city","start_city","travel_info",
-                "budget_jpy","daily_budget","min_daily_budget",
-                "weather","start_date"
+                "budget_jpy","daily_budget","min_daily_budget","travel_cost",
+                "remaining_budget","weather","start_date"
             ],
             template=template
         )
@@ -323,6 +332,8 @@ ALL_SPOTS:
             "budget_jpy": budget_jpy,
             "daily_budget": daily_budget,
             "min_daily_budget": min_daily_budget,
+            "travel_cost": travel_cost,
+            "remaining_budget": remaining_budget,
             "weather": weather,
             "start_date": start_date
         }):
