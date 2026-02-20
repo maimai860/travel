@@ -160,9 +160,11 @@ if authentication_status:
     age = st.slider("年齢", 0, 100, 30)
     budget_jpy = st.number_input("総予算（円）", min_value=0, step=1000)
 
-    budget_type = st.radio(
-        "予算タイプ",
-        ["余裕プラン", "標準プラン", "節約プラン"]
+    min_daily_budget = st.number_input(
+        "希望する1日あたり最低使用額（円）",
+        min_value=0,
+        step=1000,
+        value=10000
     )
 
     weather = st.radio("天気", ["晴れ", "雨"])
@@ -171,24 +173,7 @@ if authentication_status:
         "利用交通手段",
         ["飛行機", "新幹線", "バス", "車"]
     )
-    # =========================
-    # 予算タイプ別最低費用設定
-    # =========================
 
-    if budget_type == "余裕プラン":
-        MIN_DAILY_SIGHTSEEING = 5000
-        MIN_DAILY_FOOD = 5000
-        MIN_HOTEL_COST = 10000
-
-    elif budget_type == "節約プラン":
-        MIN_DAILY_SIGHTSEEING = 2000
-        MIN_DAILY_FOOD = 2000
-        MIN_HOTEL_COST = 5000
-
-    else:
-        MIN_DAILY_SIGHTSEEING = 3000
-        MIN_DAILY_FOOD = 3000
-        MIN_HOTEL_COST = 7000
 
     # 入力チェック
     if not start_date or not end_date:
@@ -207,9 +192,6 @@ if authentication_status:
         st.error("天気を選択してください")
         st.stop()
 
-    if not budget_type:
-        st.error("予算タイプを選択してください")
-        st.stop()
 
     # 日数制限
     total_days = (end_date - start_date).days + 1
@@ -274,15 +256,15 @@ if authentication_status:
 
         daily_budget = int(remaining_budget / total_days)
 
-        min_required = (
-            MIN_DAILY_SIGHTSEEING
-            + MIN_DAILY_FOOD
-            + MIN_HOTEL_COST
-            + MIN_LOCAL_TRANSPORT
-        )
+        # 絶対下限（システム側の最低保証）
+        SYSTEM_MIN_DAILY = 8000 + MIN_LOCAL_TRANSPORT
 
-        if daily_budget < min_required:
-            st.error("1日あたりの最低必要予算を下回っています")
+        if min_daily_budget < SYSTEM_MIN_DAILY:
+            st.error(f"1日最低{SYSTEM_MIN_DAILY}円以上で設定してください")
+            st.stop()
+
+        if daily_budget < min_daily_budget:
+            st.error("入力された1日最低予算を満たせません")
             st.stop()
 
 
@@ -320,7 +302,7 @@ if authentication_status:
 
 総予算: {budget_jpy}円
 1日予算: {daily_budget}円
-予算タイプ: {budget_type}
+ユーザー指定1日最低予算: {min_daily_budget}円
 天気: {weather}
 
 
@@ -338,7 +320,7 @@ ALL_SPOTS:
         prompt = PromptTemplate(
             input_variables=[
                 "total_days","end_city","start_city","travel_info",
-                "budget_jpy","daily_budget","budget_type",
+                "budget_jpy","daily_budget","min_daily_budget",
                 "weather","start_date"
             ],
             template=template
@@ -358,7 +340,7 @@ ALL_SPOTS:
             "travel_info": travel_info,
             "budget_jpy": budget_jpy,
             "daily_budget": daily_budget,
-            "budget_type": budget_type,
+            "min_daily_budget": min_daily_budget,
             "weather": weather,
             "start_date": start_date
         }):
