@@ -41,7 +41,7 @@ with st.expander("新規ユーザー登録"):
         elif new_username in users_data["usernames"]:
             st.warning("ユーザー名は既に存在します")
         else:
-            hashed_passwords = Hasher([new_password]).generate()  
+            hhashed_pw = stauth.Hasher([new_password]).generate()[0]  
             if isinstance(hashed_passwords, list): 
                 hashed_pw = hashed_passwords[0]
             else:  
