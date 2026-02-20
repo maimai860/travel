@@ -1,10 +1,11 @@
 import streamlit as st
-from streamlit_authenticator import Authenticate, Hasher
+from streamlit_authenticator import Authenticate
 from datetime import date
 import urllib.parse
 import re
 import json
 import requests
+import bcrypt
 
 from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
@@ -17,17 +18,18 @@ def load_users():
     try:
         with open("users.json", "r") as f:
             data = json.load(f)
+
         # 新形式にしてしまっていた場合を旧形式に戻す
         if "credentials" in data and "usernames" in data["credentials"]:
             data = {
                 "usernames": data["credentials"]["usernames"]
             }
+
     except FileNotFoundError:
         data = {
             "usernames": {
                 "admin": {
                     "name": "Admin",
-                    # 既存のハッシュパスワード（bcrypt）
                     "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
                 }
             }
@@ -41,7 +43,7 @@ def save_users(data):
 users_data = load_users()
 
 # =========================
-# 新規ユーザー登録フォーム（0.1.x 仕様）
+# 新規ユーザー登録（bcrypt）
 # =========================
 with st.expander("新規ユーザー登録"):
     new_username = st.text_input("ユーザー名")
@@ -50,13 +52,14 @@ with st.expander("新規ユーザー登録"):
 
     if st.button("登録"):
         usernames = users_data["usernames"]
+
         if not new_username or not new_password:
             st.error("ユーザー名とパスワードを入力してください")
         elif new_username in usernames:
             st.warning("ユーザー名は既に存在します")
         else:
-            # ★ このバージョンで唯一動くハッシュ関数
-            hashed_pw = Hasher.generate_password_hash(new_password)
+            # bcrypt でハッシュ化
+            hashed_pw = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
 
             usernames[new_username] = {
                 "name": new_name,
@@ -67,12 +70,12 @@ with st.expander("新規ユーザー登録"):
             st.success(f"{new_username} を登録しました。ログインしてください。")
 
 # =========================
-# 認証設定（0.1.x 仕様）
+# 認証設定（旧仕様）
 # =========================
 authenticator = Authenticate(
-    users_data,                 # credentials ではなく users_data そのもの
-    "some_cookie_name",         # cookie_name
-    "some_signature_key",       # key
+    users_data,
+    "some_cookie_name",
+    "some_signature_key",
     cookie_expiry_days=1
 )
 
@@ -258,7 +261,6 @@ if authentication_status:
 交通費: {travel_cost}円
 観光に使える残額: {remaining_budget}円
 1日あたり利用可能額: {daily_budget}円
-※この金額を絶対に超えないこと
 ユーザー指定1日最低予算: {min_daily_budget}円
 天気: {weather}
 
