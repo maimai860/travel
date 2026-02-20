@@ -10,35 +10,25 @@ from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_models import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 
-
-import streamlit_authenticator as sa
-st.write("Authenticator version:", sa.__version__)
-
-
 # =========================
-# ユーザー情報読み込み（0.3.1 形式）
+# ユーザー情報読み込み（旧形式）
 # =========================
 def load_users():
     try:
         with open("users.json", "r") as f:
             data = json.load(f)
-        # 旧形式だった場合、自動で新形式に変換
-        if "credentials" not in data and "usernames" in data:
+        # 新形式にしてしまっていた場合を旧形式に戻す
+        if "credentials" in data and "usernames" in data["credentials"]:
             data = {
-                "credentials": {
-                    "usernames": data["usernames"]
-                }
+                "usernames": data["credentials"]["usernames"]
             }
     except FileNotFoundError:
         data = {
-            "credentials": {
-                "usernames": {
-                    "admin": {
-                        "name": "Admin",
-                        "email": "",
-                        # 既存のハッシュパスワード（例）
-                        "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
-                    }
+            "usernames": {
+                "admin": {
+                    "name": "Admin",
+                    # 既存のハッシュパスワード（bcrypt）
+                    "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
                 }
             }
         }
@@ -51,26 +41,25 @@ def save_users(data):
 users_data = load_users()
 
 # =========================
-# 新規ユーザー登録フォーム（0.3.1 仕様）
+# 新規ユーザー登録フォーム（0.1.x 仕様）
 # =========================
 with st.expander("新規ユーザー登録"):
     new_username = st.text_input("ユーザー名")
     new_name = st.text_input("表示名")
-    new_email = st.text_input("メールアドレス（任意）")
     new_password = st.text_input("パスワード", type="password")
 
     if st.button("登録"):
-        usernames = users_data["credentials"]["usernames"]
+        usernames = users_data["usernames"]
         if not new_username or not new_password:
             st.error("ユーザー名とパスワードを入力してください")
         elif new_username in usernames:
             st.warning("ユーザー名は既に存在します")
         else:
-            hashed_pw = Hasher.hash_password(new_password)
+            # ★ このバージョンで唯一動くハッシュ関数
+            hashed_pw = Hasher.generate_password_hash(new_password)
 
             usernames[new_username] = {
                 "name": new_name,
-                "email": new_email,
                 "password": hashed_pw
             }
 
@@ -78,12 +67,12 @@ with st.expander("新規ユーザー登録"):
             st.success(f"{new_username} を登録しました。ログインしてください。")
 
 # =========================
-# 認証設定（0.3.1 仕様）
+# 認証設定（0.1.x 仕様）
 # =========================
 authenticator = Authenticate(
-    users_data["credentials"],
-    cookie_name="some_cookie_name",
-    key="some_signature_key",
+    users_data,                 # credentials ではなく users_data そのもの
+    "some_cookie_name",         # cookie_name
+    "some_signature_key",       # key
     cookie_expiry_days=1
 )
 
