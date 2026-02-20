@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit_authenticator as stauth
 from streamlit_authenticator import Authenticate, Hasher
 from datetime import date
 import urllib.parse
@@ -22,6 +21,7 @@ except FileNotFoundError:
         "usernames": {
             "admin": {
                 "name": "Admin",
+                # 既存のハッシュパスワード
                 "password": "$2b$12$lJ3URr1sBkUj1Q8/KZnpSutxkzfcyIUknCnb8mrjOQ47lofiqCG7q"
             }
         }
@@ -41,24 +41,30 @@ with st.expander("新規ユーザー登録"):
         elif new_username in users_data["usernames"]:
             st.warning("ユーザー名は既に存在します")
         else:
-            hashed_pw = Hasher([new_password]).generate()[0]
+            # 最新版対応 Hasher
+            hashed_pw_list = Hasher([new_password]).generate()  # リストで返る
+            hashed_pw = hashed_pw_list[0]
+
             users_data["usernames"][new_username] = {
                 "name": new_name,
                 "password": hashed_pw
             }
+
             with open("users.json", "w") as f:
-                json.dump(users_data, f)
+                json.dump(users_data, f, ensure_ascii=False, indent=2)
+
             st.success(f"{new_username} を登録しました。ログインしてください。")
 
 # =========================
 # 認証設定
 # =========================
-authenticator = stauth.Authenticate(
+authenticator = Authenticate(
     users_data,
     cookie_name="some_cookie_name",
     key="some_signature_key",
     cookie_expiry_days=1
 )
+
 authenticator.login(location="main")
 
 authentication_status = st.session_state.get("authentication_status")
